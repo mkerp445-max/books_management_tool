@@ -1,83 +1,286 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>蔵書管理システム</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <style>
-        body { background-color: #f8f9fa; }
-        .menu-card {
-            transition: transform 0.2s;
-            cursor: pointer;
-            height: 100%;
-        }
-        .menu-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        .icon-large { font-size: 3rem; margin-bottom: 1rem; }
-    </style>
-</head>
-<body>
+import os
+import sqlite3
+import requests
+from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, flash
 
-<nav class="navbar navbar-dark bg-dark mb-4">
-    <div class="container">
-        <span class="navbar-brand mb-0 h1">📚 蔵書管理システム</span>
-    </div>
-</nav>
+app = Flask(__name__)
+app.secret_key = 'book_management_final_key'
 
-<div class="container">
-    <!-- メッセージ表示エリア（20冊制限エラーなど） -->
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        {% for message in messages %}
-          <div class="alert alert-info alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-          </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+DATABASE = 'book_management.db'
 
-    <div class="row g-4">
-        <!-- 人の管理セクション -->
-        <div class="col-md-6">
-            <div class="card menu-card border-primary" onclick="location.href='{{ url_for('persons') }}'">
-                <div class="card-body text-center">
-                    <div class="icon-large text-primary">👥</div>
-                    <h5 class="card-title">人の管理</h5>
-                    <p class="card-text text-muted">図書カードの新規登録、一覧、編集、削除（非表示）を行います。</p>
-                </div>
-            </div>
-        </div>
 
-        <!-- 本の管理セクション -->
-        <div class="col-md-6">
-            <div class="card menu-card border-success" onclick="location.href='{{ url_for('get_book') }}'">
-                <div class="card-body text-center">
-                    <div class="icon-large text-success">📖</div>
-                    <h5 class="card-title">本の取得（登録）</h5>
-                    <p class="card-text text-muted">ISBNまたは手入力で新しい本を所有リストに追加します。</p>
-                </div>
-            </div>
-        </div>
+# --------------------
+# DB接続
+# --------------------
+def get_db():
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-        <!-- 注意事項や現在の状況（おまけ） -->
-        <div class="col-12 mt-5">
-            <div class="alert alert-light border shadow-sm">
-                <h6 class="alert-heading font-weight-bold">💡 アプリのルール</h6>
-                <hr>
-                <ul class="mb-0 small">
-                    <li>一人あたり最大 **20冊** まで所有可能です。</li>
-                    <li>本を手放す（廃棄）場合は、各個人の「図書カード（履歴）」から手続きしてください。</li>
-                    <li>削除された人は一覧には表示されませんが、データとしては保持されます。</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+# --------------------
+# 初期化
+# --------------------
+def init_db():
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS persons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            is_active INTEGER DEFAULT 1
+        )
+    ''')
+
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS books_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_id TEXT NOT NULL,
+            person_id INTEGER NOT NULL,
+            isbn TEXT,
+            title TEXT NOT NULL,
+            status TEXT NOT NULL,
+            timestamp TEXT NOT NULL
+        )
+    ''')
+
+    conn.commit()
+    conn.close()
+
+
+init_db()
+
+
+# --------------------
+# 外部API
+# --------------------
+def get_book_title(isbn):
+    if not isbn:
+        return None
+
+    try:
+        url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
+        res = requests.get(url, timeout=5)
+        res.raise_for_status()
+        data = res.json()
+
+        if "items" in data:
+            return data["items"][0]["volumeInfo"]["title"]
+
+    except Exception:
+        pass
+
+    return None
+
+
+# --------------------
+# 現在所持数
+# --------------------
+def get_book_count(conn, person_id):
+    row = conn.execute('''
+        SELECT 
+            (SELECT COUNT(*) FROM books_history WHERE person_id = ? AND status = '取得')
+            -
+            (SELECT COUNT(*) FROM books_history WHERE person_id = ? AND status = '廃棄')
+        AS cnt
+    ''', (person_id, person_id)).fetchone()
+
+    return row["cnt"] if row else 0
+
+
+# --------------------
+# index
+# --------------------
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+# --------------------
+# persons
+# --------------------
+@app.route('/persons', methods=['GET', 'POST'])
+def persons():
+    conn = get_db()
+
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+
+        if not name:
+            flash("名前は必須です")
+            return redirect(url_for('persons'))
+
+        conn.execute(
+            'INSERT INTO persons (name, created_at) VALUES (?, ?)',
+            (name, datetime.now().strftime('%Y-%m-%d'))
+        )
+        conn.commit()
+
+    persons = conn.execute(
+        'SELECT * FROM persons WHERE is_active = 1'
+    ).fetchall()
+
+    conn.close()
+    return render_template('persons.html', persons=persons)
+
+
+# --------------------
+# book get
+# --------------------
+@app.route('/book/get', methods=['GET', 'POST'])
+def get_book():
+    conn = get_db()
+
+    if request.method == 'POST':
+        person_id = request.form.get('person_id')
+        isbn = request.form.get('isbn', '').strip()
+        title = request.form.get('title', '').strip()
+
+        if not person_id:
+            flash("利用者を選択してください")
+            return redirect(url_for('get_book'))
+
+        if not isbn and not title:
+            flash("ISBNまたはタイトルを入力してください")
+            return redirect(url_for('get_book'))
+
+        # 上限チェック
+        if get_book_count(conn, person_id) >= 20:
+            flash("上限20冊です")
+            return redirect(url_for('get_book'))
+
+        resolved_title = get_book_title(isbn) or title
+
+        if not resolved_title:
+            flash("タイトルが取得できません")
+            return redirect(url_for('get_book'))
+
+        book_id = f"BK-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+
+        conn.execute('''
+            INSERT INTO books_history (book_id, person_id, isbn, title, status, timestamp)
+            VALUES (?, ?, ?, ?, '取得', ?)
+        ''', (
+            book_id,
+            person_id,
+            isbn,
+            resolved_title,
+            datetime.now().strftime('%Y-%m-%d %H:%M')
+        ))
+
+        conn.commit()
+        flash("登録しました")
+
+    persons = conn.execute(
+        'SELECT * FROM persons WHERE is_active = 1'
+    ).fetchall()
+
+    conn.close()
+    return render_template('get_book.html', persons=persons)
+
+
+# --------------------
+# dispose
+# --------------------
+@app.route('/book/dispose/<int:person_id>', methods=['GET', 'POST'])
+def dispose_book(person_id):
+    conn = get_db()
+
+    person = conn.execute(
+        'SELECT * FROM persons WHERE id = ? AND is_active = 1',
+        (person_id,)
+    ).fetchone()
+
+    if not person:
+        flash("利用者が不正です")
+        return redirect(url_for('persons'))
+
+    if request.method == 'POST':
+        book_id = request.form.get('book_id')
+
+        if not book_id:
+            flash("本が未選択です")
+            return redirect(url_for('dispose_book', person_id=person_id))
+
+        latest = conn.execute('''
+            SELECT status
+            FROM books_history
+            WHERE book_id = ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        ''', (book_id,)).fetchone()
+
+        if not latest or latest["status"] != "取得":
+            flash("廃棄できない状態です")
+            return redirect(url_for('dispose_book', person_id=person_id))
+
+        conn.execute('''
+            INSERT INTO books_history (book_id, person_id, title, status, timestamp)
+            SELECT book_id, person_id, title, '廃棄', ?
+            FROM books_history
+            WHERE book_id = ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        ''', (
+            datetime.now().strftime('%Y-%m-%d %H:%M'),
+            book_id
+        ))
+
+        conn.commit()
+        flash("廃棄しました")
+        return redirect(url_for('history', person_id=person_id))
+
+    books = conn.execute('''
+        SELECT *
+        FROM books_history b1
+        WHERE person_id = ?
+        AND status = '取得'
+        AND NOT EXISTS (
+            SELECT 1
+            FROM books_history b2
+            WHERE b2.book_id = b1.book_id
+            AND b2.status = '廃棄'
+            AND b2.timestamp > b1.timestamp
+        )
+    ''', (person_id,)).fetchall()
+
+    conn.close()
+
+    return render_template(
+        'dispose_book.html',
+        books=books,
+        person=person
+    )
+
+
+# --------------------
+# history
+# --------------------
+@app.route('/history/<int:person_id>')
+def history(person_id):
+    conn = get_db()
+
+    person = conn.execute(
+        'SELECT * FROM persons WHERE id = ?',
+        (person_id,)
+    ).fetchone()
+
+    logs = conn.execute('''
+        SELECT * FROM books_history
+        WHERE person_id = ?
+        ORDER BY timestamp DESC
+    ''', (person_id,)).fetchall()
+
+    conn.close()
+
+    return render_template('history.html', person=person, logs=logs)
+
+
+# --------------------
+# run
+# --------------------
+if __name__ == '__main__':
+    app.run(debug=True)
