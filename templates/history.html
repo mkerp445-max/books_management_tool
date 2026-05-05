@@ -15,6 +15,20 @@
         </div>
     </div>
 
+<!-- 履歴画面の見出し付近に追加 -->
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">{{ person.name }} さんの利用状況</h5>
+        <p class="card-text">
+            現在の所持数: <strong>{{ logs|selectattr('status', 'equalto', '取得')|list|length - logs|selectattr('status', 'equalto', '廃棄')|list|length }} 冊</strong>
+            <small class="text-muted">（上限 20 冊）</small>
+        </p>
+    </div>
+</div>
+
+
+
+
     <div class="card shadow-sm">
         <div class="card-body">
             <h5 class="card-title mb-3">利用履歴（取得・廃棄）</h5>

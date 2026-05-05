@@ -100,7 +100,7 @@ def index():
 
 
 # --------------------
-# persons
+# persons（名簿一覧）
 # --------------------
 @app.route('/persons', methods=['GET', 'POST'])
 def persons():
@@ -108,7 +108,6 @@ def persons():
 
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
-
         if not name:
             flash("名前は必須です")
             return redirect(url_for('persons'))
@@ -119,12 +118,22 @@ def persons():
         )
         conn.commit()
 
-    persons = conn.execute(
+    # --- ここから変更：冊数付きで名簿を取得 ---
+    persons_data = conn.execute(
         'SELECT * FROM persons WHERE is_active = 1'
     ).fetchall()
 
+    # 各利用者の今の所持冊数を計算してリストに作り直す
+    display_persons = []
+    for p in persons_data:
+        # 辞書形式を活かしつつ冊数を追加
+        p_dict = dict(p)
+        p_dict['current_count'] = get_book_count(conn, p['id'])
+        display_persons.append(p_dict)
+
     conn.close()
-    return render_template('persons.html', persons=persons)
+    # 作り直したリストをHTMLに渡す
+    return render_template('persons.html', persons=display_persons)
 
 
 # --------------------
