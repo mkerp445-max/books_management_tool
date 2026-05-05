@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>本の廃棄 - 蔵書管理システム</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="bg-light">
+<div class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>🗑️ 本の廃棄記録</h1>
+        <a href="{{ url_for('history', person_id=person.id) }}" class="btn btn-secondary">図書カードへ戻る</a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h5 class="card-title mb-4">{{ person.name }}さんが現在所有している本</h5>
+            
+            <form method="POST">
+                <div class="list-group mb-4">
+                {% for book in books %}
+                    <label class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <input class="form-check-input me-3" type="radio" name="title" value="{{ book.title }}" required>
+                            <strong>{{ book.title }}</strong>
+                            <input type="hidden" name="isbn" value="{{ book.isbn }}">
+                        </div>
+                        <span class="badge bg-secondary rounded-pill">ISBN: {{ book.isbn or 'なし' }}</span>
+                    </label>
+                {% else %}
+                    <div class="text-center py-4 text-muted">
+                        現在所有している本はありません。
+                    </div>
+                {% endfor %}
+                </div>
+
+                {% if books %}
+                    <button type="submit" class="btn btn-danger btn-lg w-100" onclick="return confirm('本当にこの本を「廃棄」として記録しますか？')">
+                        選択した本を廃棄する
+                    </button>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+
+    <div class="mt-4 text-center">
+        <p class="small text-muted text-decoration-none">
+            ※廃棄しても図書カードの履歴からは消えません。
+        </p>
+    </div>
+</div>
+</body>
+</html>

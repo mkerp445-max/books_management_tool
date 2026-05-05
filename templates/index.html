@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>蔵書管理システム</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        body { background-color: #f8f9fa; }
+        .menu-card {
+            transition: transform 0.2s;
+            cursor: pointer;
+            height: 100%;
+        }
+        .menu-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .icon-large { font-size: 3rem; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-dark mb-4">
+    <div class="container">
+        <span class="navbar-brand mb-0 h1">📚 蔵書管理システム</span>
+    </div>
+</nav>
+
+<div class="container">
+    <!-- メッセージ表示エリア（20冊制限エラーなど） -->
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-info alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <div class="row g-4">
+        <!-- 人の管理セクション -->
+        <div class="col-md-6">
+            <div class="card menu-card border-primary" onclick="location.href='{{ url_for('persons') }}'">
+                <div class="card-body text-center">
+                    <div class="icon-large text-primary">👥</div>
+                    <h5 class="card-title">人の管理</h5>
+                    <p class="card-text text-muted">図書カードの新規登録、一覧、編集、削除（非表示）を行います。</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 本の管理セクション -->
+        <div class="col-md-6">
+            <div class="card menu-card border-success" onclick="location.href='{{ url_for('get_book') }}'">
+                <div class="card-body text-center">
+                    <div class="icon-large text-success">📖</div>
+                    <h5 class="card-title">本の取得（登録）</h5>
+                    <p class="card-text text-muted">ISBNまたは手入力で新しい本を所有リストに追加します。</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 注意事項や現在の状況（おまけ） -->
+        <div class="col-12 mt-5">
+            <div class="alert alert-light border shadow-sm">
+                <h6 class="alert-heading font-weight-bold">💡 アプリのルール</h6>
+                <hr>
+                <ul class="mb-0 small">
+                    <li>一人あたり最大 **20冊** まで所有可能です。</li>
+                    <li>本を手放す（廃棄）場合は、各個人の「図書カード（履歴）」から手続きしてください。</li>
+                    <li>削除された人は一覧には表示されませんが、データとしては保持されます。</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
