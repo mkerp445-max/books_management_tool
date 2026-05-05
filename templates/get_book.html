@@ -2,63 +2,93 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>本の取得 - 蔵書管理システム</title>
+    <title>書籍取得 - 蔵書管理システム</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <!-- バーコードリーダー用ライブラリ -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        #reader { width: 100%; max-width: 500px; margin: 0 auto; border: none !important; }
+        #reader__scan_region video { border-radius: 10px; }
+    </style>
 </head>
 <body class="bg-light">
 <div class="container mt-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>📖 本の取得（登録）</h1>
-        <a href="{{ url_for('index') }}" class="btn btn-secondary">メニューへ戻る</a>
+        <h1>📖 本の登録</h1>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">戻る</a>
     </div>
 
+    <!-- メッセージ表示 -->
     {% with messages = get_flashed_messages() %}
       {% if messages %}
         {% for message in messages %}
-          <div class="alert alert-warning shadow-sm">{{ message }}</div>
+          <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
         {% endfor %}
       {% endif %}
     {% endwith %}
 
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="card-title mb-3">スキャンして入力</h5>
+            <!-- カメラ表示エリア -->
+            <div id="reader"></div>
+            <div id="result"></div>
+        </div>
+    </div>
+
     <div class="card shadow-sm">
         <div class="card-body">
-            <form method="POST">
-                <!-- 誰が？ -->
-                <div class="mb-4">
-                    <label class="form-label font-weight-bold">1. 利用者を選択</label>
-                    <select name="person_id" class="form-select form-select-lg" required>
-                        <option value="" disabled selected>リストから選択してください</option>
-                        {% for person in persons %}
-                            <option value="{{ person.id }}">{{ person.name }} (ID:{{ person.id }})</option>
+            <form id="book-form" method="POST">
+                <div class="mb-3">
+                    <label class="form-label">利用者</label>
+                    <select name="person_id" class="form-select" required>
+                        <option value="">選択してください</option>
+                        {% for p in persons %}
+                        <option value="{{ p.id }}">{{ p.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
 
-                <hr>
-
-                <!-- どの本を？ -->
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label font-weight-bold">2. ISBN番号で入力（推奨）</label>
-                        <input type="text" name="isbn" class="form-control" placeholder="例: 9784041026489">
-                        <small class="text-muted">※数字のみ入力してください。Googleから情報を取得します。</small>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label font-weight-bold">または 手書きで入力</label>
-                        <input type="text" name="title" class="form-control" placeholder="ISBNがない場合はタイトルを入力">
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label">ISBN（バーコード読み取りで自動入力）</label>
+                    <input type="text" id="isbn" name="isbn" class="form-control" placeholder="978...">
                 </div>
 
-                <div class="mt-4">
-                    <button type="submit" class="btn btn-success btn-lg w-100">この内容で図書カードに登録する</button>
+                <div class="mb-3">
+                    <label class="form-label">タイトル（直接入力も可）</label>
+                    <input type="text" name="title" class="form-control" placeholder="タイトルが不明な場合はISBNのみでOK">
                 </div>
+
+                <button type="submit" class="btn btn-primary w-100 py-2">この本を登録する</button>
             </form>
         </div>
     </div>
-    
-    <div class="mt-4 text-center">
-        <p class="small text-muted">※20冊を超えている利用者は登録時にエラーが表示されます。</p>
-    </div>
 </div>
+
+<script>
+    function onScanSuccess(decodedText, decodedResult) {
+        // バーコードを読み取ったら、入力欄にセット
+        document.getElementById('isbn').value = decodedText;
+        
+        // 読み取り成功の合図として音を出す代わりに、少しバイブレーションさせる（スマホのみ）
+        if (navigator.vibrate) navigator.vibrate(200);
+
+        // 停止して結果を確定させる
+        html5QrcodeScanner.clear();
+
+        // 自動で送信（任意：読み取った瞬間に登録したい場合は以下を有効に）
+        // document.getElementById('book-form').submit();
+        
+        alert("バーコードを読み取りました: " + decodedText);
+    }
+
+    let html5QrcodeScanner = new Html5QrcodeScanner(
+        "reader", { fps: 10, qrbox: {width: 250, height: 150} }
+    );
+    html5QrcodeScanner.render(onScanSuccess);
+</script>
 </body>
 </html>
