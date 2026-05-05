@@ -18,21 +18,18 @@
             
             <form method="POST">
                 <div class="list-group mb-4">
-                {% for book in books %}
-                    <label class="list-group-item d-flex justify-content-between align-items-center">
-                        <div>
-                            <input class="form-check-input me-3" type="radio" name="title" value="{{ book.title }}" required>
-                            <strong>{{ book.title }}</strong>
-                            <input type="hidden" name="isbn" value="{{ book.isbn }}">
-                        </div>
-                        <span class="badge bg-secondary rounded-pill">ISBN: {{ book.isbn or 'なし' }}</span>
-                    </label>
-                {% else %}
-                    <div class="text-center py-4 text-muted">
-                        現在所有している本はありません。
-                    </div>
-                {% endfor %}
-                </div>
+                    {% for book in books %}
+                        <label class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <!-- valueをbook_idに変更 -->
+                                <input class="form-check-input me-3" type="radio" name="book_id" value="{{ book.book_id }}" required>
+                                <strong>{{ book.title }}</strong>
+                                <input type="hidden" name="title" value="{{ book.title }}">
+                            </div>
+                            <span class="badge bg-secondary rounded-pill">ID: {{ book.book_id }}</span>
+                        </label>
+                    {% endfor %}
+                            </div>
 
                 {% if books %}
                     <button type="submit" class="btn btn-danger btn-lg w-100" onclick="return confirm('本当にこの本を「廃棄」として記録しますか？')">
