@@ -278,6 +278,22 @@ def history(person_id):
 
     return render_template('history.html', person=person, logs=logs)
 
+# --- 利用者の削除（論理削除） ---
+@app.route('/person/delete/<int:id>')
+def delete_person(id):
+    conn = get_db()
+    try:
+        # is_activeを0にして、画面上に出ないようにする
+        conn.execute('UPDATE persons SET is_active = 0 WHERE id = ?', (id,))
+        conn.commit()
+        flash('利用者を削除しました')
+    except Exception as e:
+        flash(f'削除に失敗しました: {e}')
+    finally:
+        conn.close()
+    return redirect(url_for('persons'))
+
+
 
 # --------------------
 # run
