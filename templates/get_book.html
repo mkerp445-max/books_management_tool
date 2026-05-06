@@ -68,27 +68,21 @@
     </div>
 </div>
 <script>
-    // バーコード読み取り成功時の処理（asyncを付けて非同期処理に対応させる）
+    // --- 1. バーコードスキャン成功時の処理 ---
     async function onScanSuccess(decodedText, decodedResult) {
-        // 1. ISBN入力欄に値をセット
         document.getElementById('isbn').value = decodedText;
-        
-        // スマホのバイブレーション（対応機種のみ）
         if (navigator.vibrate) navigator.vibrate(200);
 
         const resultArea = document.getElementById('result');
         resultArea.innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div> タイトルを検索中...';
 
         try {
-            // 2. Google Books API にタイトルを問い合わせる
             const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${decodedText}`);
             const data = await response.json();
 
             if (data.items && data.items.length > 0) {
                 const title = data.items[0].volumeInfo.title;
-                // 3. タイトル入力欄に自動セット
                 document.getElementsByName('title')[0].value = title;
-                // 4. 画面上に確認用テキストを表示
                 resultArea.innerHTML = `<div class="alert alert-success mt-2">ヒットしました！<br><strong>${title}</strong></div>`;
             } else {
                 resultArea.innerHTML = `<div class="alert alert-warning mt-2">タイトルが見つかりませんでした。直接入力してください。</div>`;
@@ -96,20 +90,44 @@
         } catch (error) {
             resultArea.innerHTML = `<div class="alert alert-danger mt-2">APIエラーが発生しました。</div>`;
         }
-
-        // スキャナーを止めて、入力を確定させる
         html5QrcodeScanner.clear();
     }
 
-    // スキャナーの初期化設定
+    // --- 2. スキャナーの起動設定 ---
     let html5QrcodeScanner = new Html5QrcodeScanner(
-        "reader", { 
-            fps: 10, 
-            qrbox: {width: 250, height: 150},
-            rememberLastUsedCamera: true // 最後に使ったカメラ（背面など）を記憶
-        }
+        "reader", { fps: 10, qrbox: {width: 250, height: 150} }
     );
     html5QrcodeScanner.render(onScanSuccess);
+
+    // --- 3. 【ここがバリデーション！】送信ボタンを押した時のチェック ---
+    document.getElementById('book-form').onsubmit = function(e) {
+        const isbn = document.getElementById('isbn').value;
+        const title = document.getElementsByName('title')[0].value;
+        const person = document.getElementsByName('person_id')[0].value;
+
+        // 利用者の未選択チェック
+        if (!person) {
+            alert("利用者を選択してください。");
+            e.preventDefault();
+            return false;
+        }
+
+        // ISBNの桁数・数字チェック
+        if (!/^\d{13}$/.test(isbn)) {
+            alert("ISBNは13桁の数字で入力してください。");
+            e.preventDefault(); // これで送信を止める
+            return false;
+        }
+
+        // タイトルの未入力チェック
+        if (!title) {
+            alert("タイトルを入力（またはスキャン）してください。");
+            e.preventDefault();
+            return false;
+        }
+
+        // 全てOKならそのまま送信される
+    };
 </script>
 </body>
 </html>
