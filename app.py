@@ -218,5 +218,10 @@ def delete_person(id):
         conn.close()
     return redirect(url_for('persons'))
 
+# 確認が終わったら、この部分は消してOKです！
+# with app.app_context():
+#     test_title = get_book_title("9784575239058")
+#     print(f"--- テスト結果: {test_title} ---")
+
 if __name__ == '__main__':
     app.run(debug=True)
