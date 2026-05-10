@@ -2,49 +2,83 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>本の廃棄 - 蔵書管理システム</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans JP', sans-serif; }
+        .card-dispose { border-left: 5px solid #dc3545; }
+    </style>
 </head>
 <body class="bg-light">
-<div class="container mt-5">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>🗑️ 本の廃棄記録</h1>
-        <a href="{{ url_for('history', person_id=person.id) }}" class="btn btn-secondary">図書カードへ戻る</a>
-    </div>
 
-    <div class="card shadow-sm">
-        <div class="card-body">
-            <h5 class="card-title mb-4">{{ person.name }}さんが現在所有している本</h5>
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
             
-            <form method="POST">
-                <div class="list-group mb-4">
-                    {% for book in books %}
-                        <label class="list-group-item d-flex justify-content-between align-items-center">
-                            <div>
-                                <!-- valueをbook_idに変更 -->
-                                <input class="form-check-input me-3" type="radio" name="book_id" value="{{ book.book_id }}" required>
-                                <strong>{{ book.title }}</strong>
-                                <input type="hidden" name="title" value="{{ book.title }}">
-                            </div>
-                            <span class="badge bg-secondary rounded-pill">ID: {{ book.book_id }}</span>
-                        </label>
-                    {% endfor %}
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3 mb-0 text-danger">🗑️ 本の廃棄処理</h1>
+                <a href="{{ url_for('history', person_id=person.id) }}" class="btn btn-outline-secondary">
+                    戻る
+                </a>
+            </div>
+
+            <div class="alert alert-secondary shadow-sm mb-4">
+                <small class="text-muted d-block">対象利用者</small>
+                <strong class="fs-5">{{ person.name }} 氏</strong>
+            </div>
+
+            <div class="card shadow card-dispose">
+                <div class="card-body p-4">
+                    <p class="text-muted small mb-4">
+                        現在所有している本の中から、廃棄（除籍）する本を選択してください。<br>
+                        ※この操作を行うと、所持冊数からマイナスされます。
+                    </p>
+
+                    {% if books %}
+                        <form method="POST">
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">廃棄する本を選択</label>
+                                <select name="owned_id" class="form-select form-select-lg" required>
+                                    <option value="" disabled selected>選択してください...</option>
+                                    {% for book in books %}
+                                        <option value="{{ book.id }}">
+                                            {{ book.title }} (ISBN: {{ book.isbn }})
+                                        </option>
+                                    {% endfor %}
+                                </select>
                             </div>
 
-                {% if books %}
-                    <button type="submit" class="btn btn-danger btn-lg w-100" onclick="return confirm('本当にこの本を「廃棄」として記録しますか？')">
-                        選択した本を廃棄する
-                    </button>
-                {% endif %}
-            </form>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-danger btn-lg shadow" 
+                                        onclick="return confirm('本当にこの本を廃棄しますか？\n（履歴には残ります）')">
+                                    廃棄を実行する
+                                </button>
+                            </div>
+                        </form>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <p class="text-muted mb-0">現在所有している本はありません。</p>
+                            <a href="{{ url_for('get_book') }}" class="btn btn-primary mt-3">
+                                本を登録する
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="mt-4 p-3 bg-white rounded shadow-sm">
+                <h6 class="fw-bold text-muted small">💡 廃棄処理について</h6>
+                <p class="text-muted small mb-0">
+                    「廃棄」を行っても、過去の取得履歴が消えることはありません。図書カード（履歴画面）には「廃棄」として記録が残り続けます。
+                </p>
+            </div>
+
         </div>
     </div>
-
-    <div class="mt-4 text-center">
-        <p class="small text-muted text-decoration-none">
-            ※廃棄しても図書カードの履歴からは消えません。
-        </p>
-    </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

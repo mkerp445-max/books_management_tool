@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 
 app = Flask(__name__)
-app.secret_key = 'book_management_final_key'
+app.secret_key = 'book_management_normalized_key'
 
 DATABASE = 'book_management.db'
 
@@ -30,8 +30,8 @@ def get_db():
 
 def init_db():
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute('''
+    # 1. 利用者テーブル
+    conn.execute('''
         CREATE TABLE IF NOT EXISTS persons (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -39,21 +39,34 @@ def init_db():
             is_active INTEGER DEFAULT 1
         )
     ''')
-    cur.execute('''
+    # 2. 現在の所有本テーブル (今、誰が何を持っているか)
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS owned_books (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person_id INTEGER NOT NULL,
+            isbn TEXT NOT NULL,
+            title TEXT NOT NULL,
+            added_at TEXT NOT NULL,
+            FOREIGN KEY (person_id) REFERENCES persons (id)
+        )
+    ''')
+    # 3. 全履歴テーブル (過去のすべての動き)
+    conn.execute('''
         CREATE TABLE IF NOT EXISTS books_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            book_id TEXT NOT NULL,
             person_id INTEGER NOT NULL,
             isbn TEXT,
-            title TEXT NOT NULL,
-            status TEXT NOT NULL,
+            title TEXT,
+            status TEXT NOT NULL, -- '取得' または '廃棄'
             timestamp TEXT NOT NULL
         )
     ''')
     conn.commit()
     conn.close()
 
-init_db()
+# 起動時にDBを初期化
+if not os.path.exists(DATABASE):
+    init_db()
 
 # --------------------
 # 外部API (Google Books API)
@@ -77,13 +90,8 @@ def get_book_title(isbn):
 # 補助関数（所持数計算）
 # --------------------
 def get_book_count(conn, person_id):
-    row = conn.execute('''
-        SELECT 
-            (SELECT COUNT(*) FROM books_history WHERE person_id = ? AND status = '取得')
-            -
-            (SELECT COUNT(*) FROM books_history WHERE person_id = ? AND status = '廃棄')
-        AS cnt
-    ''', (person_id, person_id)).fetchone()
+    # owned_booksテーブルを数えるだけなので非常に正確です
+    row = conn.execute('SELECT COUNT(*) as cnt FROM owned_books WHERE person_id = ?', (person_id,)).fetchone()
     return row["cnt"] if row else 0
 
 # --------------------
@@ -125,22 +133,15 @@ def get_book():
         isbn = request.form.get('isbn', '').strip()
         person_id = request.form.get('person_id')
         title = request.form.get('title', '').strip()
-
-        logging.info(f"登録リクエスト: 利用者ID={person_id}, ISBN={isbn}")
+        now = datetime.now().strftime('%Y-%m-%d %H:%M')
 
         if not isbn or not person_id:
             flash("ISBNと利用者は必須項目です。")
             conn.close()
             return redirect(url_for('get_book'))
 
-        if not (isbn.isdigit() and len(isbn) == 13):
-            logging.warning(f"ISBN形式エラー: {isbn}")
-            flash("不正なISBN形式です。13桁の数字で入力してください。")
-            conn.close()
-            return redirect(url_for('get_book'))
-
+        # 冊数制限チェック
         if get_book_count(conn, person_id) >= 20:
-            logging.warning(f"冊数制限超過: 利用者ID={person_id}")
             flash("この利用者はすでに20冊登録しています。")
             conn.close()
             return redirect(url_for('get_book'))
@@ -149,13 +150,20 @@ def get_book():
             title = get_book_title(isbn) or "タイトル不明"
 
         try:
-            book_id = f"{isbn}_{datetime.now().strftime('%M%S')}"
+            # 1. 所有テーブルに追加
             conn.execute('''
-                INSERT INTO books_history (book_id, person_id, isbn, title, status, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (book_id, person_id, isbn, title, '取得', datetime.now().strftime('%Y-%m-%d %H:%M')))
+                INSERT INTO owned_books (person_id, isbn, title, added_at)
+                VALUES (?, ?, ?, ?)
+            ''', (person_id, isbn, title, now))
+            
+            # 2. 履歴テーブルに追加
+            conn.execute('''
+                INSERT INTO books_history (person_id, isbn, title, status, timestamp)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (person_id, isbn, title, '取得', now))
+            
             conn.commit()
-            logging.info(f"登録成功: {title} (ISBN:{isbn})")
+            logging.info(f"登録成功: {title} (利用者ID:{person_id})")
             flash(f"「{title}」を登録しました！")
         except sqlite3.Error as e:
             logging.error(f"DB登録エラー: {e}")
@@ -171,57 +179,58 @@ def get_book():
 @app.route('/book/dispose/<int:person_id>', methods=['GET', 'POST'])
 def dispose_book(person_id):
     conn = get_db()
-    person = conn.execute('SELECT * FROM persons WHERE id = ? AND is_active = 1', (person_id,)).fetchone()
+    person = conn.execute('SELECT * FROM persons WHERE id = ?', (person_id,)).fetchone()
 
     if request.method == 'POST':
-        book_id = request.form.get('book_id')
-        if book_id:
-            conn.execute('''
-                INSERT INTO books_history (book_id, person_id, title, status, timestamp)
-                SELECT book_id, person_id, title, '廃棄', ?
-                FROM books_history WHERE book_id = ? ORDER BY timestamp DESC LIMIT 1
-            ''', (datetime.now().strftime('%Y-%m-%d %H:%M'), book_id))
-            conn.commit()
-            logging.info(f"廃棄処理完了: book_id={book_id}")
-            flash("廃棄しました")
+        owned_id = request.form.get('owned_id') # owned_booksテーブルのID
+        if owned_id:
+            # 本の情報を特定
+            book = conn.execute('SELECT * FROM owned_books WHERE id = ?', (owned_id,)).fetchone()
+            if book:
+                now = datetime.now().strftime('%Y-%m-%d %H:%M')
+                # 1. 所有テーブルから削除
+                conn.execute('DELETE FROM owned_books WHERE id = ?', (owned_id,))
+                # 2. 履歴テーブルに「廃棄」を記録
+                conn.execute('''
+                    INSERT INTO books_history (person_id, isbn, title, status, timestamp)
+                    VALUES (?, ?, ?, '廃棄', ?)
+                ''', (person_id, book['isbn'], book['title'], now))
+                
+                conn.commit()
+                logging.info(f"廃棄成功: {book['title']} (利用者ID:{person_id})")
+                flash(f"「{book['title']}」を廃棄しました")
+            
+            conn.close()
             return redirect(url_for('history', person_id=person_id))
 
-    books = conn.execute('''
-        SELECT * FROM books_history b1 WHERE person_id = ? AND status = '取得'
-        AND NOT EXISTS (
-            SELECT 1 FROM books_history b2 WHERE b2.book_id = b1.book_id
-            AND b2.status = '廃棄' AND b2.timestamp > b1.timestamp
-        )
-    ''', (person_id,)).fetchall()
+    # GET時: owned_booksから現在持っている本だけを表示
+    books = conn.execute('SELECT * FROM owned_books WHERE person_id = ?', (person_id,)).fetchall()
     conn.close()
     return render_template('dispose_book.html', books=books, person=person)
 
 @app.route('/history/<int:person_id>')
 def history(person_id):
     conn = get_db()
+    # 利用者情報
     person = conn.execute('SELECT * FROM persons WHERE id = ?', (person_id,)).fetchone()
+    
+    # 1. 現在所有している本の一覧 (owned_booksテーブルから)
+    owned_list = conn.execute('SELECT * FROM owned_books WHERE person_id = ? ORDER BY added_at DESC', (person_id,)).fetchall()
+    
+    # 2. 全履歴 (books_historyテーブルから)
     logs = conn.execute('SELECT * FROM books_history WHERE person_id = ? ORDER BY timestamp DESC', (person_id,)).fetchall()
+    
     conn.close()
-    return render_template('history.html', person=person, logs=logs)
+    return render_template('history.html', person=person, owned_list=owned_list, logs=logs)
 
 @app.route('/person/delete/<int:id>')
 def delete_person(id):
     conn = get_db()
-    try:
-        conn.execute('UPDATE persons SET is_active = 0 WHERE id = ?', (id,))
-        conn.commit()
-        logging.info(f"利用者論理削除: ID={id}")
-        flash('利用者を削除しました')
-    except Exception as e:
-        logging.error(f"利用者削除エラー: {e}")
-    finally:
-        conn.close()
+    conn.execute('UPDATE persons SET is_active = 0 WHERE id = ?', (id,))
+    conn.commit()
+    conn.close()
+    flash('利用者を削除しました')
     return redirect(url_for('persons'))
-
-# 確認が終わったら、この部分は消してOKです！
-# with app.app_context():
-#     test_title = get_book_title("9784575239058")
-#     print(f"--- テスト結果: {test_title} ---")
 
 if __name__ == '__main__':
     app.run(debug=True)

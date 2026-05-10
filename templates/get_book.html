@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <meta charset="UTF-8">
     <title>書籍取得 - 蔵書管理システム</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
@@ -39,7 +40,7 @@
         </div>
     </div>
 
-    <div class="card shadow-sm">
+<div class="card shadow-sm">
         <div class="card-body">
             <form id="book-form" method="POST">
                 <div class="mb-3">
@@ -54,12 +55,12 @@
 
                 <div class="mb-3">
                     <label class="form-label">ISBN（バーコード読み取りで自動入力）</label>
-                    <input type="text" id="isbn" name="isbn" class="form-control" placeholder="978...">
+                    <input type="text" id="isbn" name="isbn" class="form-control" placeholder="978..." required>
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label">タイトル（直接入力も可）</label>
-                    <input type="text" name="title" class="form-control" placeholder="タイトルが不明な場合はISBNのみでOK">
+                    <input type="text" name="title" class="form-control" placeholder="空欄なら登録時に自動取得を試みます">
                 </div>
 
                 <button type="submit" class="btn btn-primary w-100 py-2">この本を登録する</button>
@@ -67,6 +68,7 @@
         </div>
     </div>
 </div>
+
 <script>
     // --- 1. バーコードスキャン成功時の処理 ---
     async function onScanSuccess(decodedText, decodedResult) {
@@ -74,7 +76,7 @@
         if (navigator.vibrate) navigator.vibrate(200);
 
         const resultArea = document.getElementById('result');
-        resultArea.innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div> タイトルを検索中...';
+        resultArea.innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div> プレビューを取得中...';
 
         try {
             const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${decodedText}`);
@@ -82,15 +84,16 @@
 
             if (data.items && data.items.length > 0) {
                 const title = data.items[0].volumeInfo.title;
+                // スキャン時にタイトル入力欄を自動で埋める
                 document.getElementsByName('title')[0].value = title;
                 resultArea.innerHTML = `<div class="alert alert-success mt-2">ヒットしました！<br><strong>${title}</strong></div>`;
             } else {
                 resultArea.innerHTML = `<div class="alert alert-warning mt-2">タイトルが見つかりませんでした。直接入力してください。</div>`;
             }
         } catch (error) {
-            resultArea.innerHTML = `<div class="alert alert-danger mt-2">APIエラーが発生しました。</div>`;
+            resultArea.innerHTML = `<div class="alert alert-danger mt-2">プレビュー取得エラー（そのまま登録ボタンを押してみてください）</div>`;
         }
-        html5QrcodeScanner.clear();
+        // html5QrcodeScanner.clear(); // 連続スキャンしたい場合はここをコメントアウト
     }
 
     // --- 2. スキャナーの起動設定 ---
@@ -99,34 +102,25 @@
     );
     html5QrcodeScanner.render(onScanSuccess);
 
-    // --- 3. 【ここがバリデーション！】送信ボタンを押した時のチェック ---
+    // --- 3. 送信ボタンを押した時のチェック ---
     document.getElementById('book-form').onsubmit = function(e) {
         const isbn = document.getElementById('isbn').value;
-        const title = document.getElementsByName('title')[0].value;
         const person = document.getElementsByName('person_id')[0].value;
 
-        // 利用者の未選択チェック
         if (!person) {
             alert("利用者を選択してください。");
             e.preventDefault();
             return false;
         }
 
-        // ISBNの桁数・数字チェック
         if (!/^\d{13}$/.test(isbn)) {
             alert("ISBNは13桁の数字で入力してください。");
-            e.preventDefault(); // これで送信を止める
-            return false;
-        }
-
-        // タイトルの未入力チェック
-        if (!title) {
-            alert("タイトルを入力（またはスキャン）してください。");
             e.preventDefault();
             return false;
         }
 
-        // 全てOKならそのまま送信される
+        // ★【ポイント】タイトルの空チェックを削除しました！
+        // これでタイトルが空でもPython側（app.py）へデータが飛び、API取得が走ります。
     };
 </script>
 </body>
