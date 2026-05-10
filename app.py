@@ -125,6 +125,7 @@ def persons():
     return render_template('persons.html', persons=display_persons)
 
 @app.route('/get_book', methods=['GET', 'POST'])
+@app.route('/get_book', methods=['GET', 'POST'])
 def get_book():
     conn = get_db()
     persons_list = conn.execute('SELECT * FROM persons WHERE is_active = 1').fetchall()
@@ -133,14 +134,28 @@ def get_book():
         isbn = request.form.get('isbn', '').strip()
         person_id = request.form.get('person_id')
         title = request.form.get('title', '').strip()
-        now = datetime.now().strftime('%Y-%m-%d %H:%M')
+        now_dt = datetime.now()
+        now_str = now_dt.strftime('%Y-%m-%d %H:%M:%S') # 秒まで記録
 
-        if not isbn or not person_id:
-            flash("ISBNと利用者は必須項目です。")
-            conn.close()
-            return redirect(url_for('get_book'))
+        # --- 【修正ポイント：短時間の連打チェック】 ---
+        # 履歴テーブルから、この人が最後に登録した同じISBNのレコードを取得
+        last_entry = conn.execute('''
+            SELECT timestamp FROM books_history 
+            WHERE person_id = ? AND isbn = ? AND status = '取得'
+            ORDER BY timestamp DESC LIMIT 1
+        ''', (person_id, isbn)).fetchone()
 
-        # 冊数制限チェック
+        if last_entry:
+            # 最後に登録した時間と今の時間を比較
+            last_time = datetime.strptime(last_entry['timestamp'], '%Y-%m-%d %H:%M:%S')
+            time_diff = (now_dt - last_time).total_seconds()
+
+            if time_diff < 10:  # 10秒以内の再登録は連打とみなす
+                flash("連打を検知しました。少し時間を置いてから再度登録してください。")
+                conn.close()
+                return redirect(url_for('get_book'))
+        # --------------------------------------------
+
         if get_book_count(conn, person_id) >= 20:
             flash("この利用者はすでに20冊登録しています。")
             conn.close()
@@ -150,20 +165,17 @@ def get_book():
             title = get_book_title(isbn) or "タイトル不明"
 
         try:
-            # 1. 所有テーブルに追加
             conn.execute('''
                 INSERT INTO owned_books (person_id, isbn, title, added_at)
                 VALUES (?, ?, ?, ?)
-            ''', (person_id, isbn, title, now))
+            ''', (person_id, isbn, title, now_str))
             
-            # 2. 履歴テーブルに追加
             conn.execute('''
                 INSERT INTO books_history (person_id, isbn, title, status, timestamp)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (person_id, isbn, title, '取得', now))
+                VALUES (?, ?, ?, '取得', ?)
+            ''', (person_id, isbn, title, now_str))
             
             conn.commit()
-            logging.info(f"登録成功: {title} (利用者ID:{person_id})")
             flash(f"「{title}」を登録しました！")
         except sqlite3.Error as e:
             logging.error(f"DB登録エラー: {e}")
